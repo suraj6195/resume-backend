@@ -1,44 +1,56 @@
-import json
 import boto3
+import pytest
 import os
+import json
+from contextlib import contextmanager
+from moto import mock_dynamodb2
+from visitors_counter import app
+from unittest import mock
+
+TABLE = "siteVisits"
 
 
-def lambda_handler(event, context):
-    '''
-    Updates the DynamoDB entry with with the website name as the primary key by one
-    If the key exists, it increases by one
-    If it does not exist, it creates it and adds one
-    '''
+@contextmanager
+def do_test_setup():
+    with mock_dynamodb2():
+        set_up_dynamodb()
+        yield
 
-    dynamodb = boto3.client('dynamodb')
 
-    ddResponse = dynamodb.update_item(
-        TableName=os.environ['databaseName'],
-        Key={
-            'id': {'S': "bansimendapara.com"}
-        },
-        UpdateExpression='ADD visitors :inc',
-        ExpressionAttributeValues={
-            ':inc': {'N': '1'}
-        },
-        ReturnValues="UPDATED_NEW"
-    )
-
-    # Format dynamodb response into variable visitorCount
-    responseBody = json.dumps(
-        {"visitorCount": int(ddResponse['Attributes']['visitors']['N'])}
-    )
-
-    # Create api response object
-    apiResponse = {
-        "isBase64Encoded": False,
-        "statusCode": 200,
-        "body": responseBody,
-        'headers': {
-            'Access-Control-Allow-Headers': 'Content-Type',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
+def set_up_dynamodb():
+    client = boto3.client('dynamodb', region_name='us-east-1')
+    client.create_table(
+        AttributeDefinitions=[
+            {
+                'AttributeName': 'id',
+                'AttributeType': 'S'
+            },
+        ],
+        KeySchema=[
+            {
+                'AttributeName': 'id',
+                'KeyType': 'HASH'
+            }
+        ],
+        TableName=TABLE,
+        ProvisionedThroughput={
+            'ReadCapacityUnits': 1,
+            'WriteCapacityUnits': 1
         }
-    }
+    )
 
-    return apiResponse
+
+@mock.patch.dict(os.environ, {"databaseName": TABLE})
+def test_handler():
+    with do_test_setup():
+        # Run call with an event describing the file:
+        response = app.lambda_handler(None, None)
+
+        # Check that it exists in `processed/`
+        assert response['statusCode'] == 200
+        assert response['body'] == json.dumps({"visitorCount": 1})
+
+        response = app.lambda_handler(None, None)
+
+        assert response['statusCode'] == 200
+        assert response['body'] == json.dumps({"visitorCount": 2})
