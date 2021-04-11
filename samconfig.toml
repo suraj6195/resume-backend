@@ -1,0 +1,10 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "suraj-resume"
+s3_bucket = "surajpandya.xyz"
+s3_prefix = "suraj-resume"
+region = "us-west-1"
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM"
